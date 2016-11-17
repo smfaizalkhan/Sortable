@@ -1,1 +1,109 @@
-This is a git repo
+The Input consists of two files with JSON lines format
+1) Product containing product_name,manufacturer,model,announced-date
+    Sample {"product_name":"Samsung_TL100","manufacturer":"Samsung","model":"TL100","announced-date":"2009-01-07T19:00:00.000-05:00"}
+2)Listing containing title,manufacturer,currency,price
+   Sample {"title":"Samsung TL100 12.2 Megapixel Digital Camera - Black","manufacturer":"Samsung","currency":"USD","price":"50.00"}
+
+ On Analysing we can note that product_name key of products file has entry in listings file with "_" replaced by space in the title key.
+
+  So on the first note we can read the each line of prodcuts file and check with listings file  like 
+
+	1)Read the product_name from products file 
+	2)Replace _ from product_name with space 
+	3)find the replaced word occurence in listings file title key
+	4)If title contains the replaced word ,fetch that line and add in JSON object.
+
+      Doing so is time consuming since products file conatins 743 records (lines) and listing s file contains 20196 records (lines)
+
+  So to do the word search,for each operations ,we have to do 700 * 20196 operations.
+  
+Instead if we make a datastructure of listings like map of the listings file containing title value,for every read from product fiel we can fetch the value map passing in the key.
+
+But the issue is Map dosent allows duplicate key,but there is goggle api guava which allows duplicate key called multimap.
+
+Process involved 
+
+  1)Make Datastructure of listings file (mapListings())
+ 
+        a) Read the first word of the title and map the title value to it 
+        b) Read the  title and map the rest of the line to it.
+       
+           while ((lines = br.readLine()) != null) {
+				JSONObject jsonObj = (JSONObject) jsonParser.parse(lines);
+				title = jsonObj.get("title").toString();
+				titleFirstWord = title.substring(0, (title.contains(" ") ? title.indexOf(" ") : title.length()));
+				keyWord = titleFirstWord.replace(titleFirstWord.charAt(0),
+						Character.toUpperCase(titleFirstWord.charAt(0)));
+				titleKeyMap.put(keyWord, "@" + title);
+				titleValueMap.put(title, lines);
+			}
+
+	So now titleKeyMap contains name like Sony,Casio,Samsung and each one has multiple values
+	and titleValueMap conatins title key and rest of the lines as value.
+
+   2) Read Products file (readProductsFromFile())
+
+       a) Read each line of the file products.txt
+       b) For each line check the occurence in the mapped datastructure (titleKeyMap and titleValueMap)
+       
+           try {
+			BufferedReader br = new BufferedReader(new FileReader("./products.txt"));
+			while ((lines = br.readLine()) != null) {
+				JSONObject jsonObj = (JSONObject) jsonParser.parse(lines);
+				productName = (jsonObj.get("product_name").toString());
+				searchProductName = productName.substring(0,
+						(productName.contains("_") ? productName.indexOf("_") : productName.indexOf("-")));
+				replacedProductName = productName.replace((productName.contains("_") ? "_" : "-"), " ");
+				titleValue = new StringTokenizer(titleKeyMap.get(searchProductName).toString(), "@");
+				this.printValues(titleValue, productName, replacedProductName, titleValueMap, ps);
+
+			}
+
+    3) Checking the occurence from the passed values  readProductsFromFile()
+
+	       public void printValues(StringTokenizer listingsValue, String productName, String replacedProductName,
+	 			Multimap<String, String> titleValueMap, PrintWriter ps)
+
+       
+             a)listingsValue contains the title of the listings.
+             b)Pass this listings value to the titleValueMap as key so we get the lines
+             c)Add productName into JSON object as product_name and sorted values as JSON Array.
+	     d)As the output requires the format in {
+							"product_name": String
+							"listings": Array[Listing]
+						    }
+
+            e) And JSON dosen't guarantee the order,we will add into Map and pass that map odject to JSON
+
+		JSONArray listings = new JSONArray();			
+		Map obj = new LinkedHashMap();
+		obj.put("product_name", productName);
+		while (listingsValue.hasMoreElements()) {
+			tokenVal = listingsValue.nextElement().toString();
+			tokenValue = tokenVal.substring(0, ((tokenVal.length() > 2) ? (tokenVal.length() - 2) : tokenVal.length()));
+			if (tokenVal.contains(replacedProductName)) {
+
+				arrayValue = titleValueMap.get(tokenValue).toString();
+				arrayValue = arrayValue.replaceAll((arrayValue.contains("[") ? "\\[" : "\\]"), "");
+				System.out.println("Check"+listings.contains(arrayValue.toString().replaceAll("\"", "")));
+				if(!listings.contains(arrayValue.toString().replaceAll("\"", "")))
+				listings.add(arrayValue.toString().replaceAll("\"", ""));
+
+			}
+
+		}
+
+		obj.put("listings", listings);
+		ps.println(JSONObject.toJSONString(obj));
+
+So we get the desired output as 
+
+
+Sample:
+
+{"product_name":"Sony_Cyber-shot_DSC-W310","listings":["{title:Sony Cyber-shot DSC-W310 - Digital camera - compact - 12.1 Mpix - optical zoom: 4 x - supported memory: MS Duo, SD, MS PRO Duo, MS PRO Duo Mark2, SDHC, MS PRO-HG Duo - silver,manufacturer:Sony,currency:USD,price:108.75}, {title:Sony Cyber-shot DSC-W310 - Digital camera - compact - 12.1 Mpix - optical zoom: 4 x - supported memory: MS Duo, SD, MS PRO Duo, MS PRO Duo Mark2, SDHC, MS PRO-HG Duo - silver,manufacturer:Sony,currency:USD,price:113.55}]"]}
+               
+
+  
+
+
